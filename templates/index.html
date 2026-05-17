@@ -1,1 +1,110 @@
 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Musicfy</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="layout">
+
+    <!-- ── Header ─────────────────────────────────────────────────────── -->
+    <header>
+      <div class="logo">Music<span>fy</span></div>
+      <div class="header-actions">
+        {% if logged_in %}
+          <button class="btn btn-ghost" id="likedBtn">♥ Liked Songs</button>
+          <a href="/logout" class="btn btn-secondary">Log out</a>
+        {% else %}
+          <a href="/login" class="btn btn-primary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+            </svg>
+            Connect Spotify
+          </a>
+        {% endif %}
+      </div>
+    </header>
+
+    <!-- ── Sidebar ────────────────────────────────────────────────────── -->
+    <aside>
+      {% if logged_in %}
+        <div class="sidebar-section">
+          <div class="sidebar-label">Your Playlists</div>
+          <div id="sidebarList">
+            <p class="sidebar-loading">Loading…</p>
+          </div>
+        </div>
+      {% else %}
+        <div class="sidebar-loading" style="padding:20px;">
+          Log in with Spotify to see your playlists.
+        </div>
+      {% endif %}
+    </aside>
+
+    <!-- ── Main track list ────────────────────────────────────────────── -->
+    <main>
+      <div id="mainContent">
+        {% if logged_in %}
+          <div class="welcome">
+            <h2>Select a playlist to start listening</h2>
+            <p>Your playlists are loading in the sidebar</p>
+          </div>
+        {% else %}
+          <div class="welcome">
+            <h2>Welcome to Musicfy</h2>
+            <p>Connect your Spotify account to stream your music ad-free via YouTube Music.</p>
+            <a href="/login" class="btn btn-primary" style="margin-top:12px;">
+              Connect Spotify
+            </a>
+          </div>
+        {% endif %}
+      </div>
+    </main>
+
+    <!-- ── Player bar ─────────────────────────────────────────────────── -->
+    <div class="player-bar">
+      <!-- Now-playing info -->
+      <div class="now-playing">
+        <div class="track-name"  id="nowTrackName">—</div>
+        <div class="track-artist" id="nowTrackArtist"></div>
+      </div>
+
+      <!-- Controls + seek -->
+      <div class="player-center">
+        <div class="player-controls">
+          <button class="ctrl-btn" id="prevBtn" title="Previous">⏮</button>
+          <button class="ctrl-btn play-pause" id="playPauseBtn" title="Play / Pause">▶</button>
+          <button class="ctrl-btn" id="nextBtn" title="Next">⏭</button>
+        </div>
+        <div class="progress-row">
+          <span class="time" id="currentTime">0:00</span>
+          <input type="range" id="seekBar" min="0" max="100" value="0" />
+          <span class="time right" id="duration">0:00</span>
+        </div>
+      </div>
+
+      <!-- Volume -->
+      <div class="volume-row">
+        <span>🔉</span>
+        <input type="range" id="volumeBar" min="0" max="100" value="80" />
+      </div>
+    </div>
+
+  </div><!-- /layout -->
+
+  <!-- Hidden audio element — all playback goes through this -->
+  <audio id="audio" preload="auto"></audio>
+
+  <!-- Toast notification -->
+  <div id="toast"></div>
+
+  <!-- Pass login state to JS without an extra XHR -->
+  <script>
+    const IS_LOGGED_IN = {{ 'true' if logged_in else 'false' }};
+  </script>
+  <script src="/static/player.js"></script>
+</body>
+</html>
