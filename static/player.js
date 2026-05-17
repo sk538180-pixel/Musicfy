@@ -1,40 +1,91 @@
-/* =========================================================================
-   Musicfy — frontend player logic
-   =========================================================================
+/* ==========================================================================
+   Musicfy — Mobile Player Logic
+   ==========================================================================
 
-   Flow:
-   1.  On page load (if logged in) fetch /get_playlists and render sidebar.
-   2.  Clicking a playlist loads its tracks into the main track list.
-   3.  Clicking a track calls /get_stream_url → receives a direct CDN URL
-       → passes it through /proxy_stream to avoid CORS → feeds <audio>.
-   4.  The player bar controls the shared <audio> element.
-   ========================================================================= */
+   Screen flow:
+     Home (playlist grid) → Track List → Now Playing (full-screen)
 
-const audio = document.getElementById("audio");
-const playPauseBtn = document.getElementById("playPauseBtn");
-const seekBar = document.getElementById("seekBar");
+   Audio flow:
+     click track → /get_stream_url → /proxy_stream → <audio>
+   ========================================================================== */
+
+// ─── Elements ───────────────────────────────────────────────────────────────
+const audio         = document.getElementById("audio");
+const seekBar       = document.getElementById("seekBar");
+const volumeBar     = document.getElementById("volumeBar");
 const currentTimeEl = document.getElementById("currentTime");
-const durationEl = document.getElementById("duration");
-const volumeBar = document.getElementById("volumeBar");
-const nowTrackName = document.getElementById("nowTrackName");
-const nowTrackArtist = document.getElementById("nowTrackArtist");
-const toast = document.getElementById("toast");
-const sidebarList = document.getElementById("sidebarList");
-const mainContent = document.getElementById("mainContent");
-const likedBtn = document.getElementById("likedBtn");
+const durationEl    = document.getElementById("duration");
+const toast         = document.getElementById("toast");
 
-let playlists = [];          // [{id, name, tracks:[{name,artist}]}]
-let currentPlaylist = null;  // currently displayed playlist object
-let currentIndex = -1;       // index of playing track in currentPlaylist.tracks
-let loadingTrackKey = null;  // "name||artist" of the track being fetched
+// Now Playing screen
+const npTrack     = document.getElementById("npTrack");
+const npArtist    = document.getElementById("npArtist");
+const npArt       = document.getElementById("npArt");
+const npPlayPause = document.getElementById("npPlayPause");
 
-// ─── Utilities ──────────────────────────────────────────────────────────────
+// Mini player
+const miniPlayer       = document.getElementById("miniPlayer");
+const miniTrack        = document.getElementById("miniTrack");
+const miniArtist       = document.getElementById("miniArtist");
+const miniPlayPause    = document.getElementById("miniPlayPause");
+const miniProgressFill = document.getElementById("miniProgressFill");
 
-function showToast(msg, duration = 3000) {
-  toast.textContent = msg;
-  toast.classList.add("show");
-  setTimeout(() => toast.classList.remove("show"), duration);
+// Screens
+const screenHome      = document.getElementById("screen-home");
+const screenTracks    = document.getElementById("screen-tracks");
+const screenNP        = document.getElementById("screen-nowplaying");
+
+// ─── State ──────────────────────────────────────────────────────────────────
+let playlists        = [];
+let currentPlaylist  = null;
+let currentIndex     = -1;
+let loadingKey       = null;
+let toastTimer       = null;
+
+// ─── Screen navigation ───────────────────────────────────────────────────────
+
+function goTo(screen) {
+  [screenHome, screenTracks, screenNP].forEach(s => {
+    s.classList.remove("active", "behind");
+  });
+
+  if (screen === screenTracks) {
+    screenHome.classList.add("behind");
+    screenTracks.classList.add("active");
+  } else if (screen === screenNP) {
+    screenHome.classList.add("behind");
+    screenTracks.classList.add("behind");
+    screenNP.classList.add("active");
+  } else {
+    screenHome.classList.add("active");
+  }
 }
+
+document.getElementById("backBtn").addEventListener("click", () => goTo(screenHome));
+document.getElementById("npBackBtn").addEventListener("click", () => {
+  if (currentPlaylist) goTo(screenTracks);
+  else goTo(screenHome);
+});
+document.getElementById("miniOpen").addEventListener("click", () => goTo(screenNP));
+
+// ─── Toast ───────────────────────────────────────────────────────────────────
+
+function showToast(msg, duration = 3000, isError = false) {
+  clearTimeout(toastTimer);
+  toast.textContent = msg;
+  toast.classList.toggle("error", isError);
+  toast.classList.add("show");
+  if (duration > 0) {
+    toastTimer = setTimeout(() => toast.classList.remove("show"), duration);
+  }
+}
+
+function hideToast() {
+  clearTimeout(toastTimer);
+  toast.classList.remove("show");
+}
+
+// ─── Utilities ───────────────────────────────────────────────────────────────
 
 function fmtTime(secs) {
   if (!isFinite(secs)) return "0:00";
@@ -43,267 +94,283 @@ function fmtTime(secs) {
   return `${m}:${s}`;
 }
 
-// ─── Player state helpers ────────────────────────────────────────────────────
-
-function setPlayPauseIcon(playing) {
-  playPauseBtn.textContent = playing ? "⏸" : "▶";
+function esc(str) {
+  return String(str)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-function updateNowPlaying(name, artist) {
-  nowTrackName.textContent = name || "—";
-  nowTrackArtist.textContent = artist || "";
+// ─── Now-Playing UI sync ──────────────────────────────────────────────────────
+
+function updateNowPlayingUI(name, artist) {
+  npTrack.textContent    = name   || "—";
+  npArtist.textContent   = artist || "";
+  miniTrack.textContent  = name   || "—";
+  miniArtist.textContent = artist || "";
 }
 
-function highlightRow(index) {
-  document.querySelectorAll("tbody tr").forEach((tr, i) => {
-    tr.classList.toggle("playing", i === index);
-    // Replace row number with animated bar when playing
-    const numCell = tr.querySelector(".num");
-    if (numCell) {
-      numCell.textContent = i === index ? "▶" : i + 1;
-    }
-  });
+function setPlayIcon(playing) {
+  const icon = playing ? "⏸" : "▶";
+  npPlayPause.textContent  = icon;
+  miniPlayPause.textContent = playing ? "⏸" : "▶";
+  npArt.classList.toggle("playing", playing);
 }
 
-// ─── Stream URL fetching ─────────────────────────────────────────────────────
+// ─── Stream fetching ─────────────────────────────────────────────────────────
 
-/**
- * Hit /get_stream_url, then wrap the returned URL with /proxy_stream
- * to avoid CORS issues in the browser.
- */
 async function fetchStreamUrl(songName, artist) {
   const params = new URLSearchParams({ song_name: songName, artist });
-  const res = await fetch(`/get_stream_url?${params}`);
+  const res  = await fetch(`/get_stream_url?${params}`);
   const data = await res.json();
-
-  if (!res.ok || data.error) {
-    throw new Error(data.error || "Stream URL fetch failed");
-  }
-
-  // Wrap in our proxy so the browser doesn't hit CORS on the raw CDN URL
-  const proxied = `/proxy_stream?url=${encodeURIComponent(data.stream_url)}`;
-  return proxied;
+  if (!res.ok || data.error) throw new Error(data.error || "Stream fetch failed");
+  // Wrap with proxy to avoid CORS on raw YouTube CDN URLs
+  return `/proxy_stream?url=${encodeURIComponent(data.stream_url)}`;
 }
 
-// ─── Play a specific track ───────────────────────────────────────────────────
+// ─── Play a track by index ───────────────────────────────────────────────────
 
 async function playTrack(index) {
-  if (!currentPlaylist || !currentPlaylist.tracks[index]) return;
-
+  if (!currentPlaylist) return;
   const track = currentPlaylist.tracks[index];
+  if (!track) return;
+
   const key = `${track.name}||${track.artist}`;
+  if (loadingKey === key) return;
+  loadingKey = key;
 
-  // Prevent double-firing
-  if (loadingTrackKey === key) return;
-  loadingTrackKey = key;
-
-  // Show loading indicator in the row
-  const rows = document.querySelectorAll("tbody tr");
+  // Show spinner on track row
+  const rows = document.querySelectorAll(".track-item");
   if (rows[index]) {
-    rows[index].querySelector(".num").innerHTML =
-      '<span class="spinner"></span>';
+    rows[index].querySelector(".track-num").innerHTML = '<span class="spinner"></span>';
   }
 
-  showToast(`Loading "${track.name}"…`, 8000);
-  updateNowPlaying(track.name, track.artist);
+  showToast(`Loading "${track.name}"…`, 0);
+  updateNowPlayingUI(track.name, track.artist);
+  miniPlayer.classList.remove("hidden");
 
   try {
     const url = await fetchStreamUrl(track.name, track.artist);
 
-    // Only apply if the user hasn't clicked another track in the meantime
-    if (loadingTrackKey !== key) return;
+    if (loadingKey !== key) return; // user picked another track while loading
 
     audio.src = url;
     audio.load();
 
-    const playPromise = audio.play();
-    if (playPromise) {
-      playPromise.catch((e) => {
-        // Autoplay may be blocked on first interaction — show hint
-        if (e.name === "NotAllowedError") {
-          showToast("Click play to start (autoplay blocked by browser)");
-          setPlayPauseIcon(false);
-        }
-      });
+    try {
+      await audio.play();
+    } catch (e) {
+      if (e.name === "NotAllowedError") {
+        showToast("Tap ▶ to play (browser blocked autoplay)", 4000);
+        setPlayIcon(false);
+      }
     }
 
     currentIndex = index;
-    highlightRow(index);
-    toast.classList.remove("show"); // dismiss loading toast
-    showToast(`Now playing: ${track.name}`);
+    highlightTrack(index);
+    hideToast();
+    showToast(`♪ ${track.name}`);
+
   } catch (err) {
-    showToast(`Error: ${err.message}`);
-    if (rows[index]) rows[index].querySelector(".num").textContent = index + 1;
-    loadingTrackKey = null;
+    showToast(err.message, 5000, true);
+    if (rows[index]) rows[index].querySelector(".track-num").textContent = index + 1;
+    loadingKey = null;
   }
 }
 
-// ─── Track list renderer ─────────────────────────────────────────────────────
+function highlightTrack(index) {
+  document.querySelectorAll(".track-item").forEach((el, i) => {
+    el.classList.toggle("playing", i === index);
+    el.querySelector(".track-num").textContent = i === index ? "" : i + 1;
+  });
+}
 
-function renderTrackList(playlist) {
+// ─── Playlist grid ────────────────────────────────────────────────────────────
+
+function renderPlaylistGrid(lists) {
+  const grid = document.getElementById("playlistGrid");
+  if (!lists.length) {
+    grid.innerHTML = "<p style='padding:20px;color:var(--muted)'>No playlists found.</p>";
+    return;
+  }
+
+  grid.innerHTML = lists.map((p, i) => {
+    const imgHtml = p.image
+      ? `<img class="playlist-card-img" src="${esc(p.image)}" alt="" loading="lazy">`
+      : `<div class="playlist-card-emoji">${getPlaylistEmoji(i)}</div>`;
+
+    return `
+      <div class="playlist-card" data-index="${i}">
+        ${imgHtml}
+        <div class="playlist-card-overlay">
+          <div class="playlist-card-name">${esc(p.name)}</div>
+          <div class="playlist-card-count">${p.count} songs</div>
+        </div>
+      </div>`;
+  }).join("");
+
+  grid.querySelectorAll(".playlist-card").forEach(card => {
+    card.addEventListener("click", () => {
+      openPlaylist(lists[parseInt(card.dataset.index, 10)]);
+    });
+  });
+}
+
+function getPlaylistEmoji(index) {
+  const emojis = ["🎵","🎶","🎸","🎹","🎺","🎻","🥁","🎤","🎧","🎼"];
+  return emojis[index % emojis.length];
+}
+
+// ─── Track list view ──────────────────────────────────────────────────────────
+
+function openPlaylist(playlist) {
   currentPlaylist = playlist;
-  currentIndex = -1;
+  currentIndex    = -1;
 
-  mainContent.innerHTML = `
-    <div class="track-list-header">
-      <h2>${escHtml(playlist.name)}</h2>
-      <p>${playlist.tracks.length} track${playlist.tracks.length !== 1 ? "s" : ""}</p>
-    </div>
-    <table>
-      <thead>
-        <tr>
-          <th class="num">#</th>
-          <th>Title</th>
-          <th>Artist</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${playlist.tracks
-          .map(
-            (t, i) => `
-          <tr data-index="${i}">
-            <td class="num">${i + 1}</td>
-            <td class="song">${escHtml(t.name)}</td>
-            <td class="artist">${escHtml(t.artist)}</td>
-          </tr>`
-          )
-          .join("")}
-      </tbody>
-    </table>`;
+  // Hero
+  document.getElementById("heroName").textContent  = playlist.name;
+  document.getElementById("heroCount").textContent = `${playlist.count} songs`;
 
-  // Click to play
-  mainContent.querySelectorAll("tbody tr").forEach((tr) => {
-    tr.addEventListener("click", () => {
-      const idx = parseInt(tr.dataset.index, 10);
+  const heroArt = document.getElementById("heroArt");
+  if (playlist.image) {
+    heroArt.innerHTML = `<img src="${esc(playlist.image)}" alt="">`;
+  } else {
+    heroArt.innerHTML = playlist.id === "__liked__" ? "♥" : "🎵";
+  }
+
+  // Track list
+  const list = document.getElementById("trackList");
+  list.innerHTML = playlist.tracks.map((t, i) => `
+    <div class="track-item" data-index="${i}">
+      <div class="track-num">${i + 1}</div>
+      <div class="track-thumb">🎵</div>
+      <div class="track-meta">
+        <div class="track-name">${esc(t.name)}</div>
+        <div class="track-artist">${esc(t.artist)}</div>
+      </div>
+      <div class="track-eq">
+        <div class="eq-bar"></div>
+        <div class="eq-bar"></div>
+        <div class="eq-bar"></div>
+      </div>
+    </div>`).join("");
+
+  list.querySelectorAll(".track-item").forEach(el => {
+    el.addEventListener("click", () => {
+      const idx = parseInt(el.dataset.index, 10);
       playTrack(idx);
+      goTo(screenNP);
     });
   });
 
-  // Mark active sidebar item
-  document.querySelectorAll(".playlist-item").forEach((el) => {
-    el.classList.toggle("active", el.dataset.id === playlist.id);
-  });
+  goTo(screenTracks);
 }
 
-function escHtml(str) {
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+// ─── Controls ────────────────────────────────────────────────────────────────
+
+function togglePlayPause() {
+  if (!audio.src) return;
+  audio.paused ? audio.play() : audio.pause();
 }
 
-// ─── Sidebar / playlist loading ───────────────────────────────────────────────
+npPlayPause.addEventListener("click",   togglePlayPause);
+miniPlayPause.addEventListener("click", togglePlayPause);
 
-async function loadPlaylists() {
-  sidebarList.innerHTML = '<p class="sidebar-loading"><span class="spinner"></span>Loading…</p>';
+document.getElementById("npPrev").addEventListener("click", () => {
+  if (currentIndex > 0) { playTrack(currentIndex - 1); }
+});
 
-  try {
-    const res = await fetch("/get_playlists");
-    if (res.status === 401) {
-      window.location.href = "/login";
-      return;
-    }
-    playlists = await res.json();
-
-    if (playlists.error) throw new Error(playlists.error);
-
-    if (!playlists.length) {
-      sidebarList.innerHTML = '<p class="sidebar-loading">No playlists found.</p>';
-      return;
-    }
-
-    sidebarList.innerHTML = playlists
-      .map(
-        (p) =>
-          `<div class="playlist-item" data-id="${escHtml(p.id)}">${escHtml(p.name)}</div>`
-      )
-      .join("");
-
-    sidebarList.querySelectorAll(".playlist-item").forEach((el, i) => {
-      el.addEventListener("click", () => renderTrackList(playlists[i]));
-    });
-
-    // Auto-open first playlist
-    renderTrackList(playlists[0]);
-  } catch (err) {
-    sidebarList.innerHTML = `<p class="sidebar-loading">Error: ${err.message}</p>`;
+document.getElementById("npNext").addEventListener("click", () => {
+  if (currentPlaylist && currentIndex < currentPlaylist.tracks.length - 1) {
+    playTrack(currentIndex + 1);
   }
-}
+});
 
-async function loadLikedSongs() {
-  showToast("Loading Liked Songs…");
-  try {
-    const res = await fetch("/get_liked_songs");
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    // Give it a synthetic id so the sidebar active state works
-    data.id = "__liked__";
-    renderTrackList(data);
-    document.querySelectorAll(".playlist-item").forEach((el) =>
-      el.classList.remove("active")
-    );
-  } catch (err) {
-    showToast(`Error: ${err.message}`);
+document.getElementById("miniNext").addEventListener("click", () => {
+  if (currentPlaylist && currentIndex < currentPlaylist.tracks.length - 1) {
+    playTrack(currentIndex + 1);
   }
-}
+});
 
-// ─── Audio element event listeners ───────────────────────────────────────────
+document.getElementById("playAllBtn").addEventListener("click", () => {
+  playTrack(0);
+  goTo(screenNP);
+});
+
+// ─── Audio events ────────────────────────────────────────────────────────────
+
+audio.addEventListener("play",  () => setPlayIcon(true));
+audio.addEventListener("pause", () => setPlayIcon(false));
 
 audio.addEventListener("timeupdate", () => {
   if (!isFinite(audio.duration)) return;
-  seekBar.value = (audio.currentTime / audio.duration) * 100;
+  const pct = (audio.currentTime / audio.duration) * 100;
+  seekBar.value = pct;
+  miniProgressFill.style.width = `${pct}%`;
   currentTimeEl.textContent = fmtTime(audio.currentTime);
-  durationEl.textContent = fmtTime(audio.duration);
+  durationEl.textContent    = fmtTime(audio.duration);
 });
 
 audio.addEventListener("loadedmetadata", () => {
   durationEl.textContent = fmtTime(audio.duration);
 });
 
-audio.addEventListener("play", () => setPlayPauseIcon(true));
-audio.addEventListener("pause", () => setPlayPauseIcon(false));
-
-// Auto-advance to the next track when one finishes
 audio.addEventListener("ended", () => {
-  if (
-    currentPlaylist &&
-    currentIndex >= 0 &&
-    currentIndex < currentPlaylist.tracks.length - 1
-  ) {
+  if (currentPlaylist && currentIndex >= 0 &&
+      currentIndex < currentPlaylist.tracks.length - 1) {
     playTrack(currentIndex + 1);
   }
 });
 
-// ─── Player controls ──────────────────────────────────────────────────────────
-
-playPauseBtn.addEventListener("click", () => {
-  if (!audio.src) return;
-  audio.paused ? audio.play() : audio.pause();
+audio.addEventListener("error", () => {
+  showToast("Playback error — try another track", 4000, true);
+  setPlayIcon(false);
 });
 
 seekBar.addEventListener("input", () => {
-  if (!isFinite(audio.duration)) return;
-  audio.currentTime = (seekBar.value / 100) * audio.duration;
+  if (isFinite(audio.duration)) {
+    audio.currentTime = (seekBar.value / 100) * audio.duration;
+  }
 });
 
 volumeBar.addEventListener("input", () => {
   audio.volume = volumeBar.value / 100;
 });
 
-document.getElementById("prevBtn").addEventListener("click", () => {
-  if (currentIndex > 0) playTrack(currentIndex - 1);
-});
+// ─── Liked Songs button ───────────────────────────────────────────────────────
 
-document.getElementById("nextBtn").addEventListener("click", () => {
-  if (currentPlaylist && currentIndex < currentPlaylist.tracks.length - 1) {
-    playTrack(currentIndex + 1);
-  }
-});
+const likedBtn = document.getElementById("likedBtn");
+if (likedBtn) {
+  likedBtn.addEventListener("click", async () => {
+    showToast("Loading Liked Songs…", 0);
+    try {
+      const res  = await fetch("/get_liked_songs");
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      hideToast();
+      openPlaylist(data);
+    } catch (err) {
+      showToast(err.message, 4000, true);
+    }
+  });
+}
 
 // ─── Bootstrap ───────────────────────────────────────────────────────────────
 
-if (likedBtn) {
-  likedBtn.addEventListener("click", loadLikedSongs);
+async function loadLibrary() {
+  try {
+    const res = await fetch("/get_playlists");
+    if (res.status === 401) { window.location.href = "/login"; return; }
+
+    playlists = await res.json();
+    if (playlists.error) throw new Error(playlists.error);
+
+    renderPlaylistGrid(playlists);
+  } catch (err) {
+    document.getElementById("playlistGrid").innerHTML =
+      `<p style="padding:20px;color:var(--muted)">Error: ${esc(err.message)}</p>`;
+  }
 }
 
-// IS_LOGGED_IN is injected by the Jinja template
 if (typeof IS_LOGGED_IN !== "undefined" && IS_LOGGED_IN) {
-  loadPlaylists();
+  loadLibrary();
 }
