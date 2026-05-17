@@ -144,7 +144,7 @@ async function playTrack(index) {
     rows[index].querySelector(".track-num").innerHTML = '<span class="spinner"></span>';
   }
 
-  showToast(`Loading "${track.name}"…`, 0);
+  showToast(`Finding "${track.name}" on YouTube…`, 0);
   updateNowPlayingUI(track.name, track.artist);
   miniPlayer.classList.remove("hidden");
 
