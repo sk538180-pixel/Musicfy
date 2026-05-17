@@ -1,110 +1,151 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#0a0a0a" />
   <title>Musicfy</title>
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
-  <div class="layout">
 
-    <!-- ── Header ─────────────────────────────────────────────────────── -->
-    <header>
-      <div class="logo">Music<span>fy</span></div>
-      <div class="header-actions">
-        {% if logged_in %}
-          <button class="btn btn-ghost" id="likedBtn">♥ Liked Songs</button>
-          <a href="/logout" class="btn btn-secondary">Log out</a>
-        {% else %}
-          <a href="/login" class="btn btn-primary">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
-            </svg>
-            Connect Spotify
-          </a>
-        {% endif %}
-      </div>
-    </header>
+<!-- ══════════════════════════════════════════════════════
+     SCREEN: HOME (playlist grid)
+══════════════════════════════════════════════════════ -->
+<div id="screen-home" class="screen active">
+  <div class="top-bar">
+    <div class="top-bar-title">
+      <span class="logo-dot">●</span> Musicfy
+    </div>
+    {% if logged_in %}
+      <button class="icon-btn" id="likedBtn" title="Liked Songs">♥</button>
+      <a href="/logout" class="icon-btn" title="Logout">⏏</a>
+    {% else %}
+      <a href="/login" class="pill-btn">Connect Spotify</a>
+    {% endif %}
+  </div>
 
-    <!-- ── Sidebar ────────────────────────────────────────────────────── -->
-    <aside>
-      {% if logged_in %}
-        <div class="sidebar-section">
-          <div class="sidebar-label">Your Playlists</div>
-          <div id="sidebarList">
-            <p class="sidebar-loading">Loading…</p>
-          </div>
-        </div>
-      {% else %}
-        <div class="sidebar-loading" style="padding:20px;">
-          Log in with Spotify to see your playlists.
-        </div>
-      {% endif %}
-    </aside>
+  {% if logged_in %}
+  <div class="home-greeting">
+    <p class="greeting-sub">Good vibes only</p>
+    <h1 class="greeting-title">Your Library</h1>
+  </div>
 
-    <!-- ── Main track list ────────────────────────────────────────────── -->
-    <main>
-      <div id="mainContent">
-        {% if logged_in %}
-          <div class="welcome">
-            <h2>Select a playlist to start listening</h2>
-            <p>Your playlists are loading in the sidebar</p>
-          </div>
-        {% else %}
-          <div class="welcome">
-            <h2>Welcome to Musicfy</h2>
-            <p>Connect your Spotify account to stream your music ad-free via YouTube Music.</p>
-            <a href="/login" class="btn btn-primary" style="margin-top:12px;">
-              Connect Spotify
-            </a>
-          </div>
-        {% endif %}
-      </div>
-    </main>
+  <div id="playlistGrid" class="playlist-grid">
+    <div class="skeleton-card"></div>
+    <div class="skeleton-card"></div>
+    <div class="skeleton-card"></div>
+    <div class="skeleton-card"></div>
+  </div>
 
-    <!-- ── Player bar ─────────────────────────────────────────────────── -->
-    <div class="player-bar">
-      <!-- Now-playing info -->
-      <div class="now-playing">
-        <div class="track-name"  id="nowTrackName">—</div>
-        <div class="track-artist" id="nowTrackArtist"></div>
-      </div>
+  {% else %}
+  <div class="welcome-screen">
+    <div class="welcome-icon">🎵</div>
+    <h1 class="welcome-title">Musicfy</h1>
+    <p class="welcome-sub">Stream your Spotify music ad-free via YouTube Music</p>
+    <a href="/login" class="spotify-btn">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+      </svg>
+      Connect with Spotify
+    </a>
+    <p class="welcome-note">⚠️ Run locally for best results — cloud platforms may block audio streaming</p>
+  </div>
+  {% endif %}
+</div>
 
-      <!-- Controls + seek -->
-      <div class="player-center">
-        <div class="player-controls">
-          <button class="ctrl-btn" id="prevBtn" title="Previous">⏮</button>
-          <button class="ctrl-btn play-pause" id="playPauseBtn" title="Play / Pause">▶</button>
-          <button class="ctrl-btn" id="nextBtn" title="Next">⏭</button>
-        </div>
-        <div class="progress-row">
-          <span class="time" id="currentTime">0:00</span>
-          <input type="range" id="seekBar" min="0" max="100" value="0" />
-          <span class="time right" id="duration">0:00</span>
-        </div>
-      </div>
+<!-- ══════════════════════════════════════════════════════
+     SCREEN: TRACK LIST
+══════════════════════════════════════════════════════ -->
+<div id="screen-tracks" class="screen">
+  <div class="top-bar">
+    <button class="icon-btn" id="backBtn">←</button>
+    <div class="top-bar-title" id="trackListTitle">Playlist</div>
+    <div style="width:40px"></div>
+  </div>
 
-      <!-- Volume -->
-      <div class="volume-row">
-        <span>🔉</span>
-        <input type="range" id="volumeBar" min="0" max="100" value="80" />
+  <div id="playlistHero" class="playlist-hero">
+    <div class="playlist-hero-art" id="heroArt">🎵</div>
+    <div class="playlist-hero-name" id="heroName"></div>
+    <div class="playlist-hero-count" id="heroCount"></div>
+    <button class="play-all-btn" id="playAllBtn">▶ Play All</button>
+  </div>
+
+  <div id="trackList" class="track-list"></div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     SCREEN: NOW PLAYING (full screen)
+══════════════════════════════════════════════════════ -->
+<div id="screen-nowplaying" class="screen">
+  <div class="top-bar np-bar">
+    <button class="icon-btn" id="npBackBtn">↓</button>
+    <div class="top-bar-title">Now Playing</div>
+    <div style="width:40px"></div>
+  </div>
+
+  <div class="np-body">
+    <div class="np-art" id="npArt">🎵</div>
+
+    <div class="np-info">
+      <div class="np-track" id="npTrack">—</div>
+      <div class="np-artist" id="npArtist"></div>
+    </div>
+
+    <div class="np-progress">
+      <input type="range" id="seekBar" min="0" max="100" value="0" />
+      <div class="np-times">
+        <span id="currentTime">0:00</span>
+        <span id="duration">0:00</span>
       </div>
     </div>
 
-  </div><!-- /layout -->
+    <div class="np-controls">
+      <button class="np-ctrl ghost" id="npPrev">⏮</button>
+      <button class="np-ctrl big" id="npPlayPause">▶</button>
+      <button class="np-ctrl ghost" id="npNext">⏭</button>
+    </div>
 
-  <!-- Hidden audio element — all playback goes through this -->
-  <audio id="audio" preload="auto"></audio>
+    <div class="np-volume">
+      <span class="vol-icon">🔈</span>
+      <input type="range" id="volumeBar" min="0" max="100" value="80" />
+      <span class="vol-icon">🔊</span>
+    </div>
+  </div>
+</div>
 
-  <!-- Toast notification -->
-  <div id="toast"></div>
+<!-- ══════════════════════════════════════════════════════
+     MINI PLAYER (persistent — shown when a track is loaded)
+══════════════════════════════════════════════════════ -->
+<div id="miniPlayer" class="mini-player hidden">
+  <div class="mini-left" id="miniOpen">
+    <div class="mini-art">🎵</div>
+    <div class="mini-info">
+      <div class="mini-track" id="miniTrack">—</div>
+      <div class="mini-artist" id="miniArtist"></div>
+    </div>
+  </div>
+  <div class="mini-controls">
+    <button class="mini-btn" id="miniPlayPause">▶</button>
+    <button class="mini-btn" id="miniNext">⏭</button>
+  </div>
+  <div class="mini-progress-bar">
+    <div class="mini-progress-fill" id="miniProgressFill"></div>
+  </div>
+</div>
 
-  <!-- Pass login state to JS without an extra XHR -->
-  <script>
-    const IS_LOGGED_IN = {{ 'true' if logged_in else 'false' }};
-  </script>
-  <script src="/static/player.js"></script>
+<!-- Hidden audio element -->
+<audio id="audio" preload="auto"></audio>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+  const IS_LOGGED_IN = {{ 'true' if logged_in else 'false' }};
+</script>
+<script src="/static/player.js"></script>
 </body>
 </html>
